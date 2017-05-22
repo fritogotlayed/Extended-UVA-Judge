@@ -1,0 +1,36 @@
+# General logging configuration
+logging:
+  # Can be semicolon (;) separated
+  # console - use a console debugger
+  # rolling - use a rolling file debugger (useful for tail)
+  type: console
+  level: DEBUG
+  file_name:
+  file_path:
+  message_format: '%(asctime)s - %(process)s - %(thread)s - %(levelname)s - %(module)s - %(funcName)s - %(lineno)s - %(message)s'
+  file_count: 3
+  max_file_bytes: 1048576
+
+# General flask configurations
+flask:
+  # Run app in debug mode
+  # false - run app in a production level waitress server
+  # true - run app in a non-production werkzeug server
+  debug: false
+
+  # What IP address to listen on? 0.0.0.0 for all
+  host: 0.0.0.0
+
+  # What port to listen on
+  port: 80
+
+# Available compilers. Place a full path to the compiler/interpreter here
+compilers:
+  python2:
+  python3:
+
+# Full path of location to save temporary workloads to.
+work_directory:
+
+# Directory in which problem ymls are located.
+problem_directory: ../sample_problems

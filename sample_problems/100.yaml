@@ -1,0 +1,11 @@
+time_limit: 3.0
+
+runs:
+  - input: "1 10"
+    output: "1 10 20\n"
+  - input: "100 200"
+    output: "100 200 125\n"
+  - input: "201 210"
+    output: "201 210 89\n"
+  - input: "900 1000"
+    output: "900 1000 174\n"
