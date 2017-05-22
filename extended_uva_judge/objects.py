@@ -1,4 +1,4 @@
-from extended_uva_judge import errors
+from extended_uva_judge import errors, enums
 from subprocess32 import STDOUT, check_output
 from random import choice
 from string import ascii_letters
@@ -7,6 +7,7 @@ import os
 import shutil
 import yaml
 import logging
+import json
 
 _lang_map = {
     'python': 'python2',
@@ -15,6 +16,32 @@ _lang_map = {
     'python3': 'python3',
     'py3': 'python3'
 }
+
+
+class ProblemResponseBuilder:
+    def __init__(self, code):
+        self.code = code
+
+    def build_response(self):
+        return json.dumps({
+            'code': self.code,
+            'message': self.MESSAGE_MAP.get(self.code)
+        })
+
+    MESSAGE_MAP = {
+        enums.ProblemResponses.ACCEPTED: 'Accepted',
+        enums.ProblemResponses.ACCEPTED_PRESENTATION_ERROR:
+            'Accepted with Presentation Error',
+        enums.ProblemResponses.PRESENTATION_ERROR: 'Presentation Error',
+        enums.ProblemResponses.WRONG_ANSWER: 'Wrong Answer',
+        enums.ProblemResponses.COMPILE_ERROR: 'Compile Error',
+        enums.ProblemResponses.RUNTIME_ERROR: 'Runtime Error',
+        enums.ProblemResponses.TIME_LIMIT_EXCEEDED: 'Time Limit Exceeded',
+        enums.ProblemResponses.MEMORY_LIMIT_EXCEEDED: 'Memory Limit Exceeded',
+        enums.ProblemResponses.OUTPUT_LIMIT_EXCEEDED: 'Output Limit Exceeded',
+        enums.ProblemResponses.RESTRICTED_FUNCTION: 'Restricted Function',
+        enums.ProblemResponses.SUBMISSION_ERROR: 'Submission Error'
+    }
 
 
 class ProblemWorker:
@@ -42,7 +69,7 @@ class ProblemWorker:
             problem_directory, '%s.yaml' % self.problem_id)
         problem_config = yaml.load(open(problem_config_path))
 
-        result = ''
+        result_code = None
         for run in problem_config['runs']:
             program_input = run['input']
             expected = run['output']
@@ -54,18 +81,24 @@ class ProblemWorker:
             output = check_output(
                 cmd_and_args, cwd=work_dir, stderr=STDOUT, timeout=3)
 
+            # If running PyCharm debugger, remove extra prepended lines
+            if output.startswith('pydev debugger: '):
+                first_line_index = output.index(os.linesep)
+                output = output[first_line_index + len(os.linesep) * 2:]
+
             if output != expected:
                 self.log.debug(
                     'output="{output}", expected="{expected}"'.format(
                         output=output, expected=expected
                     ))
-                result = 'Invalid Output'
+                result_code = enums.ProblemResponses.WRONG_ANSWER
                 break
 
         if work_dir:
             self._remove_temp_work_dir(work_dir)
 
-        return result or 'success'
+        return ProblemResponseBuilder(result_code or
+                                      enums.ProblemResponses.ACCEPTED)
 
     @staticmethod
     def _save_user_file(request, work_dir):

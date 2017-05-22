@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, current_app, request
 from extended_uva_judge import errors
-from extended_uva_judge.utility import ProblemWorker
+from extended_uva_judge.objects import ProblemWorker
 
 
 mod = Blueprint('api', __name__, url_prefix='/api/v1')
@@ -23,7 +23,7 @@ def test(problem_id, lang):
     worker = ProblemWorker(lang, problem_id, current_app.app_config)
     output = worker.test(request)
 
-    return jsonify({'output': output}), 200
+    return output.build_response(), 200
 
 
 def allowed_file(filename):

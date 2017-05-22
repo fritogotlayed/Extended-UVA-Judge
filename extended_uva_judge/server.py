@@ -14,11 +14,11 @@ from os.path import dirname, basename, isfile
 def register_blueprints(app):
     modules = glob.glob(dirname(__file__) + '/controllers/*.py')
     raw_mods = [basename(f)[:-3] for f in modules if isfile(f)]
-    mods = [m for m in raw_mods if not m.startswith('__')]
 
-    for mod in mods:
+    for mod in raw_mods:
         m = importlib.import_module('controllers.' + mod)
-        app.register_blueprint(m.mod)
+        if hasattr(m, 'mod'):
+            app.register_blueprint(m.mod)
 
 
 def build_app():
