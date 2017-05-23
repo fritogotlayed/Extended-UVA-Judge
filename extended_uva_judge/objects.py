@@ -12,7 +12,6 @@ import json
 import time
 
 
-
 class ProblemResponseBuilder:
     def __init__(self, code):
         self.code = code
@@ -69,6 +68,7 @@ class ProblemWorker:
         self._temp_work_dir = None
         self._child_threads = []
         self._user_app_cmd = None
+        self._test_result = None
 
     def __enter__(self):
         return self
@@ -88,31 +88,10 @@ class ProblemWorker:
         """
         self._create_temp_work_dir()
         user_file_path = self._save_user_file(request)
-        problem_config = self._get_problem_config()
         self.build_user_app_command(user_file_path)
-
-        available_runs = problem_config['runs']
-        pool = ThreadPoolExecutor(max_workers=len(available_runs))
-        for run in available_runs:
-            self._child_threads.append(
-                pool.submit(self._execute_run_and_verify_output,
-                            run))
-
-        accepted_results = [
-            enums.ProblemResponses.ACCEPTED,
-            enums.ProblemResponses.ACCEPTED_PRESENTATION_ERROR
-        ]
-
-        result_code = enums.ProblemResponses.ACCEPTED
-        for child in self._child_threads:
-            code = child.result()
-            if code == enums.ProblemResponses.ACCEPTED_PRESENTATION_ERROR:
-                result_code = code
-            elif code not in accepted_results:
-                result_code = code
-                break
-
-        return ProblemResponseBuilder(result_code)
+        self._execute_test_runs()
+        self._aggregate_run_results()
+        return self.test_result
 
     def build_user_app_command(self, user_file_path):
         """Builds the command to run the users app
@@ -135,6 +114,45 @@ class ProblemWorker:
         if not self._mapped_lang:
             self._mapped_lang = self._get_lang()
         return self._mapped_lang
+
+    @property
+    def test_result(self):
+        """Returns the test results if available, None otherwise
+
+        :return: The test results
+        :rtype: ProblemResponseBuilder
+        """
+        return self._test_result
+
+    def _execute_test_runs(self):
+        """Executes the various test runs based on the specified problem id.
+        """
+        available_runs = self._get_problem_config()['runs']
+        pool = ThreadPoolExecutor(max_workers=len(available_runs))
+
+        for run in available_runs:
+            self._child_threads.append(
+                pool.submit(self._execute_run_and_verify_output,
+                            run))
+
+    def _aggregate_run_results(self):
+        """Aggregates the various test runs and sets the test result
+        """
+        accepted_results = [
+            enums.ProblemResponses.ACCEPTED,
+            enums.ProblemResponses.ACCEPTED_PRESENTATION_ERROR
+        ]
+
+        result_code = enums.ProblemResponses.ACCEPTED
+        for child in self._child_threads:
+            code = child.result()
+            if code == enums.ProblemResponses.ACCEPTED_PRESENTATION_ERROR:
+                result_code = code
+            elif code not in accepted_results:
+                result_code = code
+                break
+
+        self._test_result = ProblemResponseBuilder(result_code)
 
     def _execute_run_and_verify_output(self, run):
         """
@@ -283,6 +301,7 @@ class ProblemWorker:
         if not (problem_directory.startswith('/') or ':' in problem_directory):
             # assume it's relative to the current working directory
             problem_directory = os.path.join(os.getcwd(), problem_directory)
+
         return problem_directory
 
     def _get_problem_config(self):
