@@ -2,12 +2,12 @@ import flask
 import glob
 import importlib
 import logging
-import logging_helper
 import os
 import yaml
 import waitress
 
 from datetime import datetime
+from extended_uva_judge import logging_helper
 from os.path import dirname, basename, isfile
 
 
@@ -29,6 +29,9 @@ def build_app():
 
     override_conf = os.environ.get('EXTENDED_UVA_JUDGE_CONFIG', None)
     if override_conf:
+        # TODO: Find a better way to merge these. If data exists in the default
+        # config but not in the override config (ex: language.FOO.restricted)
+        # the default data gets blanked out.
         cfg = yaml.load(open(override_conf))
         config.update(cfg)
 
@@ -46,7 +49,8 @@ def start_server():
     app, config = build_app()
     end = datetime.now()
 
-    logging.getLogger().debug('Application built in %s.' % (end - start))
+    logging.getLogger().info('Application built in {time}.'.format(
+        time=(end - start)))
 
     host = config.get('flask', {}).get('host', '0.0.0.0')
     port = config.get('flask', {}).get('port', 8000)

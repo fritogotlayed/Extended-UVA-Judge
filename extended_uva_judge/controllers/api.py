@@ -1,11 +1,9 @@
-from flask import Blueprint, jsonify, current_app, request
+from flask import Blueprint, jsonify, current_app, request, Response
 from extended_uva_judge import errors
 from extended_uva_judge.objects import ProblemWorker
 
 
 mod = Blueprint('api', __name__, url_prefix='/api/v1')
-
-ALLOWED_EXTENSIONS = {'py'}
 
 
 @mod.route('/problem/<problem_id>/<lang>/test', methods=['POST'])
@@ -20,12 +18,15 @@ def test(problem_id, lang):
         if not allowed_file(filename):
             return jsonify({'error': 'Invalid File Type'})
 
-    worker = ProblemWorker(lang, problem_id, current_app.app_config)
-    output = worker.test(request)
+    with ProblemWorker(lang, problem_id, current_app.app_config) as worker:
+        output = worker.test(request)
 
-    return output.build_response(), 200
+    return Response(output.build_response(),
+                    status=200,
+                    mimetype='application/json')
 
 
 def allowed_file(filename):
+    allowed_extensions = current_app.app_config.get('allowed_extensions', {})
     return ('.' in filename and
-            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS)
+            filename.rsplit('.', 1)[1].lower() in allowed_extensions)

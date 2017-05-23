@@ -24,13 +24,22 @@ flask:
   # What port to listen on
   port: 80
 
-# Available compilers. Place a full path to the compiler/interpreter here
-compilers:
-  python2:
-  python3:
-
 # Full path of location to save temporary workloads to.
 work_directory:
 
 # Directory in which problem ymls are located.
 problem_directory: ../sample_problems
+
+allowed_extensions:
+  - txt
+
+# Available compilers. Place a full path to the compiler/interpreter here
+languages:
+  python2:
+    compiler:
+    restricted:
+      - subprocess
+      - multiprocess
+      - os.fork
+  python3:
+    compiler:

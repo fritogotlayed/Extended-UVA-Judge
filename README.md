@@ -21,6 +21,7 @@ a developer to write some code and submit it to an electronic judge that accepts
 languages than the standard ACM programming competition rules allow.
 
 ## Getting Started
+* Developed and Tested w/ Python 3.6.1
 TODO
 
 ## Configuration
