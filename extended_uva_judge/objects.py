@@ -62,6 +62,7 @@ class Languages:
 class ProblemWorker:
     def __init__(self, lang, problem_id, config):
         self._lang = lang
+        self._mapped_lang = None
         self._problem_id = problem_id
         self._config = config  # type: dict
         self._log = logging.getLogger()
@@ -118,11 +119,22 @@ class ProblemWorker:
 
         :param user_file_path: The path to the users compiled application
         """
-        mapped_lang = self._get_lang()
+        mapped_lang = self.language
         if mapped_lang in [Languages.PYTHON2, Languages.PYTHON3]:
             self._user_app_cmd = [self._get_compiler(), user_file_path]
         else:
             raise errors.UnsupportedLanguageError(mapped_lang)
+
+    @property
+    def language(self):
+        """Gets the normalized programming language.
+
+        :return: The normalized programming language.
+        :rtype: str
+        """
+        if not self._mapped_lang:
+            self._mapped_lang = self._get_lang()
+        return self._mapped_lang
 
     def _execute_run_and_verify_output(self, run):
         """
@@ -248,12 +260,11 @@ class ProblemWorker:
         :return: The path to the users selected compiler / interpreter.
         :rtype: str
         """
-        lang = self._get_lang()
-        lang_details = self._config.get('languages', {}).get(lang, {})
+        lang_details = self._config.get('languages', {}).get(self.language, {})
         compiler = lang_details.get('compiler')
 
         self._log.debug('Mapped {lang} to {compiler}.'.format(
-            lang=lang, compiler=compiler
+            lang=self.language, compiler=compiler
         ))
         return compiler
 
