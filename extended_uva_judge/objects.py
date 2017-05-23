@@ -11,13 +11,6 @@ import logging
 import json
 import time
 
-_lang_map = {
-    'python': 'python2',
-    'python2': 'python2',
-    'py2': 'python2',
-    'python3': 'python3',
-    'py3': 'python3'
-}
 
 
 class ProblemResponseBuilder:
@@ -46,6 +39,26 @@ class ProblemResponseBuilder:
     }
 
 
+class Languages:
+    PYTHON2 = 'python2'
+    PYTHON3 = 'python3'
+
+    _lang_map = {
+        'python': PYTHON2,
+        'python2': PYTHON2,
+        'py2': PYTHON2,
+        'python3': PYTHON3,
+        'py3': PYTHON3
+    }
+
+    def __init__(self):
+        raise NotImplementedError
+
+    @staticmethod
+    def map_language(language):
+        return Languages._lang_map[language]
+
+
 class ProblemWorker:
     def __init__(self, lang, problem_id, config):
         self._lang = lang
@@ -54,6 +67,7 @@ class ProblemWorker:
         self._log = logging.getLogger()
         self._temp_work_dir = None
         self._child_threads = []
+        self._user_app_cmd = None
 
     def __enter__(self):
         return self
@@ -72,22 +86,22 @@ class ProblemWorker:
         :rtype: ProblemResponseBuilder
         """
         self._create_temp_work_dir()
-        new_path = self._save_user_file(request)
+        user_file_path = self._save_user_file(request)
         problem_config = self._get_problem_config()
-        base_cmd_and_args = [self._get_compiler(), new_path]
+        self.build_user_app_command(user_file_path)
 
         available_runs = problem_config['runs']
         pool = ThreadPoolExecutor(max_workers=len(available_runs))
         for run in available_runs:
             self._child_threads.append(
                 pool.submit(self._execute_run_and_verify_output,
-                            base_cmd_and_args,
                             run))
 
         accepted_results = [
             enums.ProblemResponses.ACCEPTED,
             enums.ProblemResponses.ACCEPTED_PRESENTATION_ERROR
         ]
+
         result_code = enums.ProblemResponses.ACCEPTED
         for child in self._child_threads:
             code = child.result()
@@ -99,29 +113,38 @@ class ProblemWorker:
 
         return ProblemResponseBuilder(result_code)
 
-    def _execute_run_and_verify_output(self, base_cmd_and_args, run):
+    def build_user_app_command(self, user_file_path):
+        """Builds the command to run the users app
+
+        :param user_file_path: The path to the users compiled application
+        """
+        mapped_lang = self._get_lang()
+        if mapped_lang in [Languages.PYTHON2, Languages.PYTHON3]:
+            self._user_app_cmd = [self._get_compiler(), user_file_path]
+        else:
+            raise errors.UnsupportedLanguageError(mapped_lang)
+
+    def _execute_run_and_verify_output(self, run):
         """
         
-        :param base_cmd_and_args: The command to run the users application
         :param run: the run to acquire arguments from
         :return: The response code for the output verification
         :rtype: str
         """
-        output = self._execute_run(base_cmd_and_args, run)
+        output = self._execute_run(run)
         code = self._verify_output(run, output)
         return code
 
-    def _execute_run(self, base_cmd_and_args, run):
+    def _execute_run(self, run):
         """Executes the users application with the run arguments.
 
-        :param base_cmd_and_args: The command to run the users application
         :param run: the run to acquire arguments from
         :return: The output from the users program
         :rtype: str
         """
         program_input = run['input']
 
-        cmd_and_args = list(base_cmd_and_args)
+        cmd_and_args = list(self._user_app_cmd)
         cmd_and_args.extend(program_input.split(' '))
 
         self._log.debug(cmd_and_args)
@@ -214,7 +237,7 @@ class ProblemWorker:
         :rtype: str
         """
         lang = self._lang
-        mapped_lang = _lang_map.get(lang)
+        mapped_lang = Languages.map_language(lang)
         self._log.debug('Mapped language {input} to {output}.'.format(
             input=lang, output=mapped_lang))
         return mapped_lang

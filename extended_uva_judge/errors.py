@@ -4,3 +4,7 @@ class MissingConfigEntryError(Exception):
 
 class TooManyFilesError(Exception):
     pass
+
+
+class UnsupportedLanguageError(Exception):
+    pass
