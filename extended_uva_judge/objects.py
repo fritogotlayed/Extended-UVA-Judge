@@ -1,5 +1,5 @@
 from extended_uva_judge import errors, enums
-from subprocess import STDOUT, check_output
+from subprocess import TimeoutExpired, PIPE, Popen
 from random import choice
 from string import ascii_letters
 from concurrent.futures import ThreadPoolExecutor
@@ -143,14 +143,17 @@ class ProblemWorker:
             enums.ProblemResponses.ACCEPTED_PRESENTATION_ERROR
         ]
 
-        result_code = enums.ProblemResponses.ACCEPTED
-        for child in self._child_threads:
-            code = child.result()
-            if code == enums.ProblemResponses.ACCEPTED_PRESENTATION_ERROR:
-                result_code = code
-            elif code not in accepted_results:
-                result_code = code
-                break
+        try:
+            result_code = enums.ProblemResponses.ACCEPTED
+            for child in self._child_threads:
+                code = child.result()
+                if code == enums.ProblemResponses.ACCEPTED_PRESENTATION_ERROR:
+                    result_code = code
+                elif code not in accepted_results:
+                    result_code = code
+                    break
+        except TimeoutExpired:
+            result_code = enums.ProblemResponses.TIME_LIMIT_EXCEEDED
 
         self._test_result = ProblemResponseBuilder(result_code)
 
@@ -172,17 +175,13 @@ class ProblemWorker:
         :return: The output from the users program
         :rtype: str
         """
-        program_input = run['input']
+        program_input = run['input'].encode()
+        timeout = float(self._get_problem_config()['time_limit'])
 
-        cmd_and_args = list(self._user_app_cmd)
-        cmd_and_args.extend(program_input.split(' '))
+        p = Popen(self._user_app_cmd, stdout=PIPE, stdin=PIPE, stderr=PIPE)
+        stdout, stderr = p.communicate(input=program_input, timeout=timeout)
 
-        self._log.debug(cmd_and_args)
-        output = check_output(
-            cmd_and_args, cwd=self._temp_work_dir,
-            stderr=STDOUT, timeout=3)
-
-        return output
+        return stdout
 
     def _verify_output(self, run, output):
         """Verifies the provided output against the expected output in the run
