@@ -39,10 +39,12 @@ curl -X POST \
 The Successful Response
 ```bash
 {
-  "output": "success"
+  "code": "AC",
+  "message": "Accepted"
 }
 ```
 
 ## Resources
 * [UVa Problems](https://uva.onlinejudge.org/index.php?option=com_onlinejudge&Itemid=8&category=1)
 * [UVa Solution Generator](http://uvatoolkit.com/problemssolve.php)
+* [uDebug](https://www.udebug.com/UVa/100)

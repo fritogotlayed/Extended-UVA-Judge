@@ -64,5 +64,9 @@ def start_server():
                        port=port)
 
 
+def main():
+    start_server()
+
+
 if __name__ == '__main__':
     start_server()

@@ -58,6 +58,16 @@ class Languages:
         return Languages._lang_map[language]
 
 
+class ProblemWorkerFactory:
+    def __init__(self):
+        raise NotImplementedError()
+
+    @staticmethod
+    def create_worker(language, problem_id, app_config):
+        # TODO: Remove sub code and implement
+        return ProblemWorker(language, problem_id, app_config)
+
+
 class ProblemWorker:
     def __init__(self, lang, problem_id, config):
         self._lang = lang
@@ -86,14 +96,24 @@ class ProblemWorker:
         :return: A ProblemResponseBuilder for the verdict
         :rtype: ProblemResponseBuilder
         """
-        self._create_temp_work_dir()
-        user_file_path = self._save_user_file(request)
-        self.build_user_app_command(user_file_path)
-        self._execute_test_runs()
-        self._aggregate_run_results()
+        try:
+            self._create_temp_work_dir()
+            user_file_path = self._save_user_file(request)
+            self._compile()
+            self._build_user_app_command(user_file_path)
+            self._execute_test_runs()
+            self._aggregate_run_results()
+        except RuntimeError:
+            self._test_result = ProblemResponseBuilder(
+                enums.ProblemResponses.RUNTIME_ERROR)
+
         return self.test_result
 
-    def build_user_app_command(self, user_file_path):
+    def _compile(self):
+        # We noop for now since only pythons are supported.
+        pass
+
+    def _build_user_app_command(self, user_file_path):
         """Builds the command to run the users app
 
         :param user_file_path: The path to the users compiled application
@@ -128,7 +148,8 @@ class ProblemWorker:
         """Executes the various test runs based on the specified problem id.
         """
         available_runs = self._get_problem_config()['runs']
-        pool = ThreadPoolExecutor(max_workers=len(available_runs))
+        max_workers = int(self._config['max_submission_workers'])
+        pool = ThreadPoolExecutor(max_workers=max_workers)
 
         for run in available_runs:
             self._child_threads.append(
@@ -159,7 +180,7 @@ class ProblemWorker:
 
     def _execute_run_and_verify_output(self, run):
         """
-        
+
         :param run: the run to acquire arguments from
         :return: The response code for the output verification
         :rtype: str
@@ -180,6 +201,13 @@ class ProblemWorker:
 
         p = Popen(self._user_app_cmd, stdout=PIPE, stdin=PIPE, stderr=PIPE)
         stdout, stderr = p.communicate(input=program_input, timeout=timeout)
+
+        if p.returncode != 0:
+            self._log.debug(
+                'Problem with test...\nStandard Output: {out}\n'
+                'Standard Error: {err}\nReturn Code:{code}'.format(
+                    out=stdout, err=stderr, code=p.returncode))
+            raise RuntimeError(stderr)
 
         return stdout
 
