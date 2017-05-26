@@ -1,4 +1,4 @@
-from extended_uva_judge import errors, enums
+from extended_uva_judge import errors, enums, utilities
 from subprocess import TimeoutExpired, PIPE, Popen
 from random import choice
 from string import ascii_letters
@@ -6,21 +6,26 @@ from concurrent.futures import ThreadPoolExecutor
 
 import os
 import shutil
-import yaml
 import logging
 import json
 import time
+import abc
 
 
 class ProblemResponseBuilder:
-    def __init__(self, code):
+    def __init__(self, code, description=None):
         self.code = code
+        self.description = description
 
     def build_response(self):
-        return json.dumps({
+        response_body = {
             'code': self.code,
             'message': self.MESSAGE_MAP.get(self.code)
-        })
+        }
+        if self.description is not None:
+            response_body['description'] = self.description
+
+        return json.dumps(response_body)
 
     MESSAGE_MAP = {
         enums.ProblemResponses.ACCEPTED: 'Accepted',
@@ -41,13 +46,19 @@ class ProblemResponseBuilder:
 class Languages:
     PYTHON2 = 'python2'
     PYTHON3 = 'python3'
+    C_SHARP = 'c_sharp'
+    JAVA = 'java'
 
     _lang_map = {
+        PYTHON2: PYTHON2,
         'python': PYTHON2,
-        'python2': PYTHON2,
         'py2': PYTHON2,
-        'python3': PYTHON3,
-        'py3': PYTHON3
+        PYTHON3: PYTHON3,
+        'py3': PYTHON3,
+        C_SHARP: C_SHARP,
+        'csharp': C_SHARP,
+        'cs': C_SHARP,
+        JAVA: JAVA
     }
 
     def __init__(self):
@@ -55,29 +66,71 @@ class Languages:
 
     @staticmethod
     def map_language(language):
-        return Languages._lang_map[language]
+        val = Languages._lang_map.get(language)
+        if val is None:
+            raise errors.UnsupportedLanguageError(language)
+        return val
+
+    @staticmethod
+    def get_all_languages(lang_filter=None):
+        languages = {}
+        for key in Languages._lang_map.keys():
+            normalized_key = Languages.map_language(key)
+            if lang_filter is None or normalized_key in lang_filter:
+                if languages.get(normalized_key) is None:
+                    languages[normalized_key] = []
+                languages[normalized_key].append(key)
+
+        return languages
 
 
 class ProblemWorkerFactory:
+    _config = None
+
     def __init__(self):
         raise NotImplementedError()
 
     @staticmethod
-    def create_worker(language, problem_id, app_config):
-        # TODO: Remove sub code and implement
-        return ProblemWorker(language, problem_id, app_config)
+    def initialize(app_config):
+        global _config
+        _config = app_config
+
+    @staticmethod
+    def create_worker(language, problem_id):
+        global _config
+
+        lang = ProblemWorkerFactory._normalize_language(language)
+        args = lang, problem_id, _config
+
+        if lang == Languages.PYTHON2 or lang == Languages.PYTHON3:
+            worker = PythonProblemWorker(*args)
+        elif lang == Languages.C_SHARP:
+            worker = CSharpProblemWorker(*args)
+        else:
+            raise NotImplementedError()
+
+        logging.debug('Mapped {lang} to {worker}.'.format(
+            lang=lang, worker=worker.__class__.__name__))
+        return worker
+
+    @staticmethod
+    def _normalize_language(language):
+        mapped_lang = Languages.map_language(language)
+        logging.getLogger().debug(
+            'Mapped language {input} to {output}.'.format(
+                input=language, output=mapped_lang))
+        return mapped_lang
 
 
 class ProblemWorker:
-    def __init__(self, lang, problem_id, config):
-        self._lang = lang
-        self._mapped_lang = None
+    def __init__(self, language, problem_id, config):
+        self._mapped_lang = language
         self._problem_id = problem_id
         self._config = config  # type: dict
         self._log = logging.getLogger()
         self._temp_work_dir = None
         self._child_threads = []
-        self._user_app_cmd = None
+        self._run_command = None
         self._test_result = None
 
     def __enter__(self):
@@ -99,8 +152,8 @@ class ProblemWorker:
         try:
             self._create_temp_work_dir()
             user_file_path = self._save_user_file(request)
-            self._compile()
-            self._build_user_app_command(user_file_path)
+            self._compile(user_file_path)
+            self._run_command = self._build_run_command(user_file_path)
             self._execute_test_runs()
             self._aggregate_run_results()
         except RuntimeError:
@@ -109,20 +162,19 @@ class ProblemWorker:
 
         return self.test_result
 
-    def _compile(self):
-        # We noop for now since only pythons are supported.
-        pass
+    @abc.abstractmethod
+    def _compile(self, user_file_path):
+        """Compiles the submission for the users language.
+        """
+        raise NotImplementedError
 
-    def _build_user_app_command(self, user_file_path):
+    @abc.abstractmethod
+    def _build_run_command(self, user_file_path):
         """Builds the command to run the users app
 
         :param user_file_path: The path to the users compiled application
         """
-        mapped_lang = self.language
-        if mapped_lang in [Languages.PYTHON2, Languages.PYTHON3]:
-            self._user_app_cmd = [self._get_compiler(), user_file_path]
-        else:
-            raise errors.UnsupportedLanguageError(mapped_lang)
+        raise NotImplementedError
 
     @property
     def language(self):
@@ -131,8 +183,6 @@ class ProblemWorker:
         :return: The normalized programming language.
         :rtype: str
         """
-        if not self._mapped_lang:
-            self._mapped_lang = self._get_lang()
         return self._mapped_lang
 
     @property
@@ -199,17 +249,32 @@ class ProblemWorker:
         program_input = run['input'].encode()
         timeout = float(self._get_problem_config()['time_limit'])
 
-        p = Popen(self._user_app_cmd, stdout=PIPE, stdin=PIPE, stderr=PIPE)
-        stdout, stderr = p.communicate(input=program_input, timeout=timeout)
+        return_code, stdout, stderr = self._execute_command(
+            self._run_command, cmd_input=program_input, timeout=timeout)
 
-        if p.returncode != 0:
+        if return_code != 0:
             self._log.debug(
                 'Problem with test...\nStandard Output: {out}\n'
                 'Standard Error: {err}\nReturn Code:{code}'.format(
-                    out=stdout, err=stderr, code=p.returncode))
+                    out=stdout, err=stderr, code=return_code))
             raise RuntimeError(stderr)
 
         return stdout
+
+    @staticmethod
+    def _execute_command(command, cmd_input=None, timeout=None):
+        """Executes the specified command
+
+        :param command: the command to execute
+        :param cmd_input: standard in inputs to provide to the running command
+        :param timeout: Time limit in which to kill the app in seconds.
+        :return: return code, standard output, standard error
+        :rtype: tuple
+        """
+        p = Popen(command, stdout=PIPE, stdin=PIPE, stderr=PIPE)
+        stdout, stderr = p.communicate(input=cmd_input, timeout=timeout)
+
+        return p.returncode, stdout, stderr
 
     def _verify_output(self, run, output):
         """Verifies the provided output against the expected output in the run
@@ -219,24 +284,21 @@ class ProblemWorker:
         :return: The response code for the output verification
         :rtype: str
         """
-        expected = run['output'].encode()
-
-        # If running PyCharm debugger, remove extra prepended lines
+        # Translate the line endings for os compatibility
         line_sep = os.linesep.encode()
-        if output.startswith(b'pydev debugger: '):
-            first_line_index = output.index(line_sep)
-            output = output[first_line_index + len(line_sep) * 2:]
-
-        # Translate the expected output line endings for os compatibility
+        expected = run['output'].encode().replace(line_sep, b'\n')
         output = output.replace(line_sep, b'\n')
+        run['user_output'] = output
 
+        verdict = enums.ProblemResponses.ACCEPTED
         if output != expected:
             template = ('Output Mismatch! output="{output}", '
                         'expected="{expected}"')
             self._log.debug(template.format(output=output, expected=expected))
-            return enums.ProblemResponses.WRONG_ANSWER
+            verdict = enums.ProblemResponses.WRONG_ANSWER
 
-        return enums.ProblemResponses.ACCEPTED
+        run['verdict'] = verdict
+        return verdict
 
     def _save_user_file(self, request):
         """Persists users uploaded file to the temp working directory.
@@ -287,49 +349,21 @@ class ProblemWorker:
             shutil.rmtree(self._temp_work_dir)
             self._temp_work_dir = None
 
-    def _get_lang(self):
-        """Gets the normalized programming language.
-
-        :return: The normalized programming language.
-        :rtype: str
-        """
-        lang = self._lang
-        mapped_lang = Languages.map_language(lang)
-        self._log.debug('Mapped language {input} to {output}.'.format(
-            input=lang, output=mapped_lang))
-        return mapped_lang
-
     def _get_compiler(self):
         """Gets the path to the compiler / interpreter.
 
-        :return: The path to the users selected compiler / interpreter.
-        :rtype: str
+        :return: The path to the users selected compiler / interpreter and
+                 the configured args array.
+        :rtype: tuple
         """
         lang_details = self._config.get('languages', {}).get(self.language, {})
         compiler = lang_details.get('compiler')
+        args = lang_details.get('compiler_args')
 
         self._log.debug('Mapped {lang} to {compiler}.'.format(
             lang=self.language, compiler=compiler
         ))
-        return compiler
-
-    def _get_problem_directory(self):
-        """Gets the directory containing the problem configs.
-
-        :return: The path to the problem configs.
-        :rtype: str
-        """
-        problem_directory = self._config['problem_directory']
-
-        if not problem_directory:
-            raise errors.MissingConfigEntryError('problem_directory')
-
-        # Check for full windows or *nix directory path
-        if not (problem_directory.startswith('/') or ':' in problem_directory):
-            # assume it's relative to the current working directory
-            problem_directory = os.path.join(os.getcwd(), problem_directory)
-
-        return problem_directory
+        return compiler, args
 
     def _get_problem_config(self):
         """Gets the configuration for this objects corresponding problem.
@@ -337,9 +371,37 @@ class ProblemWorker:
         :return: The configuration for the users selected problem
         :rtype: dict
         """
-        problem_directory = self._get_problem_directory()
+        return utilities.get_problem_config(self._config, self._problem_id)
 
-        problem_config_path = os.path.join(
-            problem_directory, '%s.yaml' % self._problem_id)
-        problem_config = yaml.load(open(problem_config_path))
-        return problem_config
+
+class PythonProblemWorker(ProblemWorker):
+
+    def _build_run_command(self, user_file_path):
+        compiler, _ = self._get_compiler()
+        return [compiler, user_file_path]
+
+    def _compile(self, user_file_path):
+        """Compiles the submission for the users language.
+
+        NO-OP: Python is interpreted
+        """
+        pass
+
+
+class CSharpProblemWorker(ProblemWorker):
+
+    def _build_run_command(self, user_file_path):
+        exe_file_path = ''.join([user_file_path.rsplit('.', 1)[0], '.exe'])
+        args = [exe_file_path]
+        return args
+
+    def _compile(self, user_file_path):
+        """Compiles the submission for the users language.
+        """
+        exe_file_path = ''.join([user_file_path.rsplit('.', 1)[0], '.exe'])
+        compiler, args = self._get_compiler()
+        args = [compiler,
+                ''.join(['/out:', exe_file_path]),
+                *args,
+                user_file_path]
+        self._execute_command(args)

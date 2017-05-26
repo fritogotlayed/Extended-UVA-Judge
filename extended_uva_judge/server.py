@@ -8,6 +8,7 @@ import waitress
 
 from datetime import datetime
 from extended_uva_judge import logging_helper
+from extended_uva_judge.objects import ProblemWorkerFactory
 from os.path import dirname, basename, isfile
 
 
@@ -36,6 +37,7 @@ def build_app():
         config.update(cfg)
 
     logging_helper.initialize(config, app)
+    ProblemWorkerFactory.initialize(config)
 
     register_blueprints(app)
 

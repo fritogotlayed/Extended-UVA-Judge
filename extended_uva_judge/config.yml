@@ -33,9 +33,6 @@ problem_directory: ../sample_problems
 # Max Submission Concurrent Workers
 max_submission_workers: 10
 
-allowed_extensions:
-  - txt
-
 # Available compilers. Place a full path to the compiler/interpreter here
 languages:
   python2:
@@ -44,5 +41,13 @@ languages:
       - subprocess
       - multiprocess
       - os.fork
+    file_extensions:
+      - py
   python3:
     compiler:
+  c_sharp:
+    compiler:
+    compiler_args:
+      - /nologo
+    file_extensions:
+      - cs

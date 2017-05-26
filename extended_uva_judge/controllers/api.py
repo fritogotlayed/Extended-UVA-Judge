@@ -1,6 +1,8 @@
+import logging
 from flask import Blueprint, jsonify, current_app, request, Response
-from extended_uva_judge import errors
-from extended_uva_judge.objects import ProblemWorkerFactory
+from extended_uva_judge import errors, enums, utilities
+from extended_uva_judge.objects import ProblemWorkerFactory, Languages, \
+    ProblemResponseBuilder
 
 
 mod = Blueprint('api', __name__, url_prefix='/api/v1')
@@ -8,26 +10,66 @@ mod = Blueprint('api', __name__, url_prefix='/api/v1')
 
 @mod.route('/problem/<problem_id>/<lang>/test', methods=['POST'])
 def test(problem_id, lang):
-    if not request.files:
-        return jsonify({'message': 'File not found'}), 400
+    output = _validate_submission_request(problem_id, lang)
+    status_code = 400
 
-    if len(request.files) != 1:
-        raise errors.TooManyFilesError()
-
-    for filename in request.files.keys():
-        if not allowed_file(filename):
-            return jsonify({'error': 'Invalid File Type'})
-
-    with ProblemWorkerFactory.create_worker(
-            lang, problem_id, current_app.app_config) as worker:
-        output = worker.test(request)
+    try:
+        if output is None:
+            with ProblemWorkerFactory.create_worker(lang, problem_id) as worker:
+                output = worker.test(request)
+                status_code = 200
+    except NotImplementedError as ex:
+        logging.warning('Failure to run problem worker.', exc_info=ex)
+        output = ProblemResponseBuilder(
+            code=enums.ProblemResponses.SUBMISSION_ERROR,
+            description='Problem Worker for language not implemented.'
+        )
 
     return Response(output.build_response(),
-                    status=200,
+                    status=status_code,
                     mimetype='application/json')
 
 
-def allowed_file(filename):
-    allowed_extensions = current_app.app_config.get('allowed_extensions', {})
+@mod.route('/available_languages', methods=['GET'])
+def available_languages():
+    config = current_app.app_config
+    lang_configs = config.get('languages')
+    configured_keys = list(lang_configs.keys())
+
+    return jsonify({'languages': Languages.get_all_languages(configured_keys)})
+
+
+def _allowed_file(filename, language):
+    config = current_app.app_config
+    lang = Languages.map_language(language)
+    lang_configs = config.get('languages')
+    allowed_extensions = lang_configs.get(lang, {}).get('file_extensions', [])
     return ('.' in filename and
             filename.rsplit('.', 1)[1].lower() in allowed_extensions)
+
+
+def _validate_submission_request(problem_id, lang):
+    code = None
+    message = None
+
+    if not request.files:
+        code = enums.ProblemResponses.SUBMISSION_ERROR
+        message = 'File not found.'
+    elif len(request.files) != 1:
+        code = enums.ProblemResponses.SUBMISSION_ERROR
+        message = 'Too many files.'
+    elif utilities.does_problem_config_exist(
+            current_app.app_config, problem_id) is False:
+        code = enums.ProblemResponses.SUBMISSION_ERROR
+        message = 'Could not find problem configuration on this judge.'
+    else:
+        try:
+            for filename in request.files.keys():
+                if not _allowed_file(filename, lang):
+                    code = enums.ProblemResponses.SUBMISSION_ERROR
+                    message = 'Invalid file type.'
+        except errors.UnsupportedLanguageError:
+            code = enums.ProblemResponses.SUBMISSION_ERROR
+            message = 'Unsupported language. Please GET /available_languages'
+
+    return None if code is None else ProblemResponseBuilder(code, message)
