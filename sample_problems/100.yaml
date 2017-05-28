@@ -1,17 +1,22 @@
 time_limit: 3.0
 
-# I know the formatting here is horrible. I'm using this as an example.
 runs:
-  - input: 1 15
-    output: |
-      1 15 20
-  - input: 20 30
-    output: |
-      20 30 112
-  - input: 30 20
-    output: 30 20 112
-  - input: 10 10
-    output: 10 10 7
-
-  - input: 1000000 1000010
-    output: 1000000 1000010 259
+  - input: |
+      1 15
+      20 30
+      30 20
+      10 10
+      1000000 1000010
+    output: # These two outputs may look the same but they are not. The first includes a newline after 259 where the second does not.
+      - |
+        1 15 20
+        20 30 112
+        30 20 112
+        10 10 7
+        1000000 1000010 259
+      - |
+        1 15 20
+        20 30 112
+        30 20 112
+        10 10 7
+        1000000 1000010 259

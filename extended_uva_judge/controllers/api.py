@@ -15,7 +15,8 @@ def test(problem_id, lang):
 
     try:
         if output is None:
-            with ProblemWorkerFactory.create_worker(lang, problem_id) as worker:
+            with ProblemWorkerFactory.create_worker(
+                    lang, problem_id) as worker:
                 output = worker.test(request)
                 status_code = 200
     except NotImplementedError as ex:

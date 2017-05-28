@@ -25,5 +25,8 @@ var/
 .coverage.*
 .cache
 
+# IDEs
+# Please add these to your global git ignore file.
+
 # Other
 .venv

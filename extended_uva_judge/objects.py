@@ -1,9 +1,3 @@
-from extended_uva_judge import errors, enums, utilities
-from subprocess import TimeoutExpired, PIPE, Popen
-from random import choice
-from string import ascii_letters
-from concurrent.futures import ThreadPoolExecutor
-
 import os
 import shutil
 import logging
@@ -11,11 +5,18 @@ import json
 import time
 import abc
 
+from subprocess import TimeoutExpired, PIPE, Popen
+from random import choice
+from string import ascii_letters
+from concurrent.futures import ThreadPoolExecutor
+from extended_uva_judge import errors, enums, utilities
+
 
 class ProblemResponseBuilder:
-    def __init__(self, code, description=None):
+    def __init__(self, code, description=None, trace=None):
         self.code = code
         self.description = description
+        self.trace = trace
 
     def build_response(self):
         response_body = {
@@ -24,6 +25,11 @@ class ProblemResponseBuilder:
         }
         if self.description is not None:
             response_body['description'] = self.description
+        if self.trace is not None:
+            response_body['trace'] = (
+                self.trace.replace('\\r', '\r')
+                    .replace('\\n', '\n')
+                    .replace('\\\\', '\\'))
 
         return json.dumps(response_body)
 
@@ -132,6 +138,7 @@ class ProblemWorker:
         self._child_threads = []
         self._run_command = None
         self._test_result = None
+        self._failure_trace = None
 
     def __enter__(self):
         return self
@@ -158,7 +165,8 @@ class ProblemWorker:
             self._aggregate_run_results()
         except RuntimeError:
             self._test_result = ProblemResponseBuilder(
-                enums.ProblemResponses.RUNTIME_ERROR)
+                enums.ProblemResponses.RUNTIME_ERROR,
+                trace=self._failure_trace)
 
         return self.test_result
 
@@ -253,10 +261,12 @@ class ProblemWorker:
             self._run_command, cmd_input=program_input, timeout=timeout)
 
         if return_code != 0:
-            self._log.debug(
+            message = (
                 'Problem with test...\nStandard Output: {out}\n'
                 'Standard Error: {err}\nReturn Code:{code}'.format(
                     out=stdout, err=stderr, code=return_code))
+            self._log.debug(message)
+            self._failure_trace = message
             raise RuntimeError(stderr)
 
         return stdout
@@ -286,16 +296,36 @@ class ProblemWorker:
         """
         # Translate the line endings for os compatibility
         line_sep = os.linesep.encode()
-        expected = run['output'].encode().replace(line_sep, b'\n')
+        expected_list = run['output']
         output = output.replace(line_sep, b'\n')
         run['user_output'] = output
 
-        verdict = enums.ProblemResponses.ACCEPTED
-        if output != expected:
-            template = ('Output Mismatch! output="{output}", '
-                        'expected="{expected}"')
-            self._log.debug(template.format(output=output, expected=expected))
+        self._log.debug('Checking output against %s solutions' %
+                        len(expected_list))
+
+        accepted = False
+        expected = None
+        for expected in expected_list:
+            expected = expected.encode().replace(line_sep, b'\n')
+            message = 'output="{output}", expected="{expected}"'.format(
+                output=output, expected=expected
+            )
+            self._log.debug(message)
+            if output == expected:
+                self._log.debug('Answer accepted.')
+                accepted = True
+                break
+            self._log.debug('Answer not accepted.')
+
+        if accepted is False:
+            message = ('Output Mismatch! output="{output}", '
+                       'expected="{expected}"').format(
+                output=output, expected=expected
+            )
+            self._log.debug(message)
             verdict = enums.ProblemResponses.WRONG_ANSWER
+        else:
+            verdict = enums.ProblemResponses.ACCEPTED
 
         run['verdict'] = verdict
         return verdict

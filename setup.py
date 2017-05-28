@@ -21,5 +21,5 @@ setup(
         'console_scripts': [
             'extended-uva-judge-server = extended_uva_judge.server:main'
         ]
-    },
+    }
 )
