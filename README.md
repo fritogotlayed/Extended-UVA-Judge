@@ -1,5 +1,8 @@
 # Extended UVa Judge
 
+## CI builds
+[![Build Status](https://travis-ci.org/fritogotlayed/Extended-UVA-Judge.svg?branch=master)](https://travis-ci.org/fritogotlayed/Extended-UVA-Judge)
+
 ## Inspiration
 While reading "Programming Challenges - The Programming Content Training Manual"
 by Steven S. Skiena and Miguel A. Revilla I was inspired to use the problems in
