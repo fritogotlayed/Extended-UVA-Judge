@@ -2,13 +2,11 @@ import os
 import shutil
 import logging
 import json
-import time
 import abc
 
 from subprocess import TimeoutExpired, PIPE, Popen
 from random import choice
 from string import ascii_letters
-from concurrent.futures import ThreadPoolExecutor
 from extended_uva_judge import errors, enums, utilities
 
 
@@ -135,10 +133,11 @@ class ProblemWorker:
         self._config = config  # type: dict
         self._log = logging.getLogger()
         self._temp_work_dir = None
-        self._child_threads = []
         self._run_command = None
         self._test_result = None
         self._failure_trace = None
+        self._user_output = None
+        self._user_result_code = None
 
     def __enter__(self):
         return self
@@ -161,12 +160,19 @@ class ProblemWorker:
             user_file_path = self._save_user_file(request)
             self._compile(user_file_path)
             self._run_command = self._build_run_command(user_file_path)
-            self._execute_test_runs()
-            self._aggregate_run_results()
+            self._execute_run()
+            self._verify_output()
+            self._analyze_result_code()
         except RuntimeError:
+            self._log.debug('Runtime error.')
             self._test_result = ProblemResponseBuilder(
                 enums.ProblemResponses.RUNTIME_ERROR,
                 trace=self._failure_trace)
+        except TimeoutExpired:
+            self._log.debug('Time limit exceeded.')
+            self._test_result = ProblemResponseBuilder(
+                enums.ProblemResponses.TIME_LIMIT_EXCEEDED,
+            )
 
         return self.test_result
 
@@ -202,60 +208,20 @@ class ProblemWorker:
         """
         return self._test_result
 
-    def _execute_test_runs(self):
-        """Executes the various test runs based on the specified problem id.
+    def _analyze_result_code(self):
+        """Analyzes the test result code and sets the test result
         """
-        available_runs = self._get_problem_config()['runs']
-        max_workers = int(self._config['max_submission_workers'])
-        pool = ThreadPoolExecutor(max_workers=max_workers)
+        self._test_result = ProblemResponseBuilder(self._user_result_code)
 
-        for run in available_runs:
-            self._child_threads.append(
-                pool.submit(self._execute_run_and_verify_output,
-                            run))
-
-    def _aggregate_run_results(self):
-        """Aggregates the various test runs and sets the test result
-        """
-        accepted_results = [
-            enums.ProblemResponses.ACCEPTED,
-            enums.ProblemResponses.ACCEPTED_PRESENTATION_ERROR
-        ]
-
-        try:
-            result_code = enums.ProblemResponses.ACCEPTED
-            for child in self._child_threads:
-                code = child.result()
-                if code == enums.ProblemResponses.ACCEPTED_PRESENTATION_ERROR:
-                    result_code = code
-                elif code not in accepted_results:
-                    result_code = code
-                    break
-        except TimeoutExpired:
-            result_code = enums.ProblemResponses.TIME_LIMIT_EXCEEDED
-
-        self._test_result = ProblemResponseBuilder(result_code)
-
-    def _execute_run_and_verify_output(self, run):
-        """
-
-        :param run: the run to acquire arguments from
-        :return: The response code for the output verification
-        :rtype: str
-        """
-        output = self._execute_run(run)
-        code = self._verify_output(run, output)
-        return code
-
-    def _execute_run(self, run):
+    def _execute_run(self):
         """Executes the users application with the run arguments.
 
-        :param run: the run to acquire arguments from
         :return: The output from the users program
         :rtype: str
         """
-        program_input = run['input'].encode()
-        timeout = float(self._get_problem_config()['time_limit'])
+        problem_config = self._get_problem_config()
+        program_input = problem_config['input'].encode()
+        timeout = float(problem_config['time_limit'])
 
         return_code, stdout, stderr = self._execute_command(
             self._run_command, cmd_input=program_input, timeout=timeout)
@@ -269,7 +235,7 @@ class ProblemWorker:
             self._failure_trace = message
             raise RuntimeError(stderr)
 
-        return stdout
+        self._user_output = stdout
 
     @staticmethod
     def _execute_command(command, cmd_input=None, timeout=None):
@@ -286,19 +252,16 @@ class ProblemWorker:
 
         return p.returncode, stdout, stderr
 
-    def _verify_output(self, run, output):
+    def _verify_output(self):
         """Verifies the provided output against the expected output in the run
 
-        :param run: The run to verify against
-        :param output: the output to verify
         :return: The response code for the output verification
         :rtype: str
         """
         # Translate the line endings for os compatibility
         line_sep = os.linesep.encode()
-        expected_list = run['output']
-        output = output.replace(line_sep, b'\n')
-        run['user_output'] = output
+        expected_list = self._get_problem_config()['output']
+        self._user_output = self._user_output.replace(line_sep, b'\n')
 
         self._log.debug('Checking output against %s solutions' %
                         len(expected_list))
@@ -308,10 +271,10 @@ class ProblemWorker:
         for expected in expected_list:
             expected = expected.encode().replace(line_sep, b'\n')
             message = 'output="{output}", expected="{expected}"'.format(
-                output=output, expected=expected
+                output=self._user_output, expected=expected
             )
             self._log.debug(message)
-            if output == expected:
+            if self._user_output == expected:
                 self._log.debug('Answer accepted.')
                 accepted = True
                 break
@@ -320,15 +283,14 @@ class ProblemWorker:
         if accepted is False:
             message = ('Output Mismatch! output="{output}", '
                        'expected="{expected}"').format(
-                output=output, expected=expected
+                output=self._user_output, expected=expected
             )
             self._log.debug(message)
             verdict = enums.ProblemResponses.WRONG_ANSWER
         else:
             verdict = enums.ProblemResponses.ACCEPTED
 
-        run['verdict'] = verdict
-        return verdict
+        self._user_result_code = verdict
 
     def _save_user_file(self, request):
         """Persists users uploaded file to the temp working directory.
@@ -370,12 +332,6 @@ class ProblemWorker:
         """Removes the temporary working directory
         """
         if self._temp_work_dir:
-            # Make sure all of the child threads are done before we clean up
-            # the temp folder.
-            for child in self._child_threads:
-                while not child.done():
-                    time.sleep(0.25)
-
             shutil.rmtree(self._temp_work_dir)
             self._temp_work_dir = None
 
