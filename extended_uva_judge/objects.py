@@ -11,25 +11,67 @@ from extended_uva_judge import errors, enums, utilities
 
 
 class ProblemResponseBuilder:
-    def __init__(self, code, description=None, trace=None):
-        self.code = code
-        self.description = description
-        self.trace = trace
+    def __init__(self, code, description=None, trace=None, debug=False,
+                 stdout=None, stderr=None):
+        self._code = code
+        self._description = description
+        self._trace = trace
+        self._debug = debug
+        self._stdout = None
+        self._stderr = None
+
+        # Convert some things that sometimes come in as bytes
+        self.stdout = stdout
+        self.stderr = stderr
 
     def build_response(self):
         response_body = {
-            'code': self.code,
-            'message': self.MESSAGE_MAP.get(self.code)
+            'code': self._code,
+            'message': self.MESSAGE_MAP.get(self._code)
         }
-        if self.description is not None:
-            response_body['description'] = self.description
-        if self.trace is not None:
+
+        if self._description is not None:
+            response_body['description'] = self._description
+
+        if self._trace is not None:
             response_body['trace'] = (
-                self.trace.replace('\\r', '\r')
+                self._trace.replace('\\r', '\r')
                     .replace('\\n', '\n')
                     .replace('\\\\', '\\'))
 
+        if self._debug:
+            response_body['stdout'] = self.stdout
+            response_body['stderr'] = self.stderr
+
         return json.dumps(response_body)
+
+    @property
+    def debug(self):
+        return self._debug
+
+    @debug.setter
+    def debug(self, value):
+        self._debug = value
+
+    @property
+    def stdout(self):
+        return self._stdout
+
+    @stdout.setter
+    def stdout(self, value):
+        if isinstance(value, bytes):
+            value = value.decode()
+        self._stdout = value
+
+    @property
+    def stderr(self):
+        return self._stderr
+
+    @stderr.setter
+    def stderr(self, value):
+        if isinstance(value, bytes):
+            value = value.decode()
+        self._stderr = value
 
     MESSAGE_MAP = {
         enums.ProblemResponses.ACCEPTED: 'Accepted',
@@ -137,6 +179,7 @@ class ProblemWorker:
         self._test_result = None
         self._failure_trace = None
         self._user_output = None
+        self._user_error = None
         self._user_result_code = None
 
     def __enter__(self):
@@ -208,10 +251,18 @@ class ProblemWorker:
         """
         return self._test_result
 
+    @property
+    def output(self):
+        return self._user_output
+
     def _analyze_result_code(self):
         """Analyzes the test result code and sets the test result
         """
-        self._test_result = ProblemResponseBuilder(self._user_result_code)
+        self._test_result = ProblemResponseBuilder(
+            self._user_result_code,
+            stdout=self._user_output,
+            stderr=self._user_error
+        )
 
     def _execute_run(self):
         """Executes the users application with the run arguments.
@@ -226,6 +277,9 @@ class ProblemWorker:
         return_code, stdout, stderr = self._execute_command(
             self._run_command, cmd_input=program_input, timeout=timeout)
 
+        self._user_output = stdout
+        self._user_error = stderr
+
         if return_code != 0:
             message = (
                 'Problem with test...\nStandard Output: {out}\n'
@@ -234,8 +288,6 @@ class ProblemWorker:
             self._log.debug(message)
             self._failure_trace = message
             raise RuntimeError(stderr)
-
-        self._user_output = stdout
 
     @staticmethod
     def _execute_command(command, cmd_input=None, timeout=None):

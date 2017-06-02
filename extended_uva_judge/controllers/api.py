@@ -26,6 +26,8 @@ def test(problem_id, lang):
             description='Problem Worker for language not implemented.'
         )
 
+    output.debug = request.args.get('debug', False)
+
     return Response(output.build_response(),
                     status=status_code,
                     mimetype='application/json')
