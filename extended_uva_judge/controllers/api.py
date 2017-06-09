@@ -1,7 +1,9 @@
 import logging
-from flask import Blueprint, jsonify, current_app, request, Response
-from extended_uva_judge import errors, enums, utilities
-from extended_uva_judge.objects import ProblemWorkerFactory, Languages, \
+from flask import Blueprint, jsonify, current_app, request, Response, redirect
+from flask import url_for
+from extended_uva_judge import errors, enums, utilities, languages as langs,\
+    problems as probs
+from extended_uva_judge.objects import ProblemWorkerFactory, \
     ProblemResponseBuilder
 
 
@@ -33,18 +35,35 @@ def test(problem_id, lang):
                     mimetype='application/json')
 
 
+@mod.route('/available_problems', methods=['GET'])
+def available_problems():
+    return redirect(url_for('api.problems'))
+
+
 @mod.route('/available_languages', methods=['GET'])
 def available_languages():
+    return redirect(url_for('api.languages'))
+
+
+@mod.route('/problems', methods=['GET'])
+def problems():
+    config = current_app.app_config
+
+    return jsonify({'problems': probs.get_available_problems(config)})
+
+
+@mod.route('/languages', methods=['GET'])
+def languages():
     config = current_app.app_config
     lang_configs = config.get('languages')
     configured_keys = list(lang_configs.keys())
 
-    return jsonify({'languages': Languages.get_all_languages(configured_keys)})
+    return jsonify({'languages': langs.get_all_languages(configured_keys)})
 
 
 def _allowed_file(filename, language):
     config = current_app.app_config
-    lang = Languages.map_language(language)
+    lang = langs.map_language(language)
     lang_configs = config.get('languages')
     allowed_extensions = lang_configs.get(lang, {}).get('file_extensions', [])
     return ('.' in filename and

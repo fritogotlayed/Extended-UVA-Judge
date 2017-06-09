@@ -7,7 +7,7 @@ import abc
 from subprocess import TimeoutExpired, PIPE, Popen
 from random import choice
 from string import ascii_letters
-from extended_uva_judge import errors, enums, utilities
+from extended_uva_judge import errors, enums, utilities, languages
 
 
 class ProblemResponseBuilder:
@@ -89,47 +89,6 @@ class ProblemResponseBuilder:
     }
 
 
-class Languages:
-    PYTHON2 = 'python2'
-    PYTHON3 = 'python3'
-    C_SHARP = 'c_sharp'
-    JAVA = 'java'
-
-    _lang_map = {
-        PYTHON2: PYTHON2,
-        'python': PYTHON2,
-        'py2': PYTHON2,
-        PYTHON3: PYTHON3,
-        'py3': PYTHON3,
-        C_SHARP: C_SHARP,
-        'csharp': C_SHARP,
-        'cs': C_SHARP,
-        JAVA: JAVA
-    }
-
-    def __init__(self):
-        raise NotImplementedError
-
-    @staticmethod
-    def map_language(language):
-        val = Languages._lang_map.get(language)
-        if val is None:
-            raise errors.UnsupportedLanguageError(language)
-        return val
-
-    @staticmethod
-    def get_all_languages(lang_filter=None):
-        languages = {}
-        for key in Languages._lang_map.keys():
-            normalized_key = Languages.map_language(key)
-            if lang_filter is None or normalized_key in lang_filter:
-                if languages.get(normalized_key) is None:
-                    languages[normalized_key] = []
-                languages[normalized_key].append(key)
-
-        return languages
-
-
 class ProblemWorkerFactory:
     _config = None
 
@@ -148,9 +107,9 @@ class ProblemWorkerFactory:
         lang = ProblemWorkerFactory._normalize_language(language)
         args = lang, problem_id, _config
 
-        if lang == Languages.PYTHON2 or lang == Languages.PYTHON3:
+        if lang == languages.PYTHON2 or lang == languages.PYTHON3:
             worker = PythonProblemWorker(*args)
-        elif lang == Languages.C_SHARP:
+        elif lang == languages.C_SHARP:
             worker = CSharpProblemWorker(*args)
         else:
             raise NotImplementedError()
@@ -161,7 +120,7 @@ class ProblemWorkerFactory:
 
     @staticmethod
     def _normalize_language(language):
-        mapped_lang = Languages.map_language(language)
+        mapped_lang = languages.map_language(language)
         logging.getLogger().debug(
             'Mapped language {input} to {output}.'.format(
                 input=language, output=mapped_lang))
