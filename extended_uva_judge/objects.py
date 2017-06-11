@@ -256,7 +256,8 @@ class ProblemWorker:
         :rtype: str
         """
         problem_config = self._get_problem_config()
-        program_input = problem_config['input'].encode()
+        program_input = problem_config['input'].replace(
+            '\r\n', '\n').rstrip('\n').encode()
         timeout = float(problem_config['time_limit'])
 
         return_code, stdout, stderr = self._execute_command(
@@ -271,7 +272,7 @@ class ProblemWorker:
                 'Standard Error: {err}\nReturn Code:{code}'.format(
                     out=stdout, err=stderr, code=return_code))
             self._log.debug(message)
-            self._failure_trace = message
+            self._failure_trace = str(stderr)
             raise RuntimeError(stderr)
 
     @staticmethod
