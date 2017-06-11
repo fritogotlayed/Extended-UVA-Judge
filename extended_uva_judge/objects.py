@@ -3,6 +3,7 @@ import shutil
 import logging
 import json
 import abc
+import mmap
 
 from subprocess import TimeoutExpired, PIPE, Popen
 from random import choice
@@ -112,7 +113,8 @@ class ProblemWorkerFactory:
         elif lang == languages.C_SHARP:
             worker = CSharpProblemWorker(*args)
         else:
-            raise NotImplementedError()
+            logging.warning('Failure to run problem worker. Language not implemented.')
+            worker = NotImplementedProblemWorker(*args)
 
         logging.debug('Mapped {lang} to {worker}.'.format(
             lang=lang, worker=worker.__class__.__name__))
@@ -140,6 +142,7 @@ class ProblemWorker:
         self._user_output = None
         self._user_error = None
         self._user_result_code = None
+        self._safe_to_run = False
 
     def __enter__(self):
         return self
@@ -160,11 +163,13 @@ class ProblemWorker:
         try:
             self._create_temp_work_dir()
             user_file_path = self._save_user_file(request)
-            self._compile(user_file_path)
-            self._run_command = self._build_run_command(user_file_path)
-            self._execute_run()
-            self._verify_output()
-            self._analyze_result_code()
+            self._scan_for_disallowed_constructs(user_file_path)
+            if self._safe_to_run:
+                self._compile(user_file_path)
+                self._run_command = self._build_run_command(user_file_path)
+                self._execute_run()
+                self._verify_output()
+                self._analyze_result_code()
         except RuntimeError:
             self._log.debug('Runtime error.')
             self._test_result = ProblemResponseBuilder(
@@ -213,6 +218,27 @@ class ProblemWorker:
     @property
     def output(self):
         return self._user_output
+
+    def _scan_for_disallowed_constructs(self, user_file_path):
+        lang_details = self._config.get('languages', {}).get(self.language, {})
+        restricted = lang_details.get('restricted')
+        if restricted is None:
+            return
+
+        restricted_item = False
+        with open(user_file_path, 'rb', 0) as f:
+            with mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as s:
+                for item in restricted:
+                    if s.find(item.encode()) != -1:
+                        restricted_item = item
+
+        if restricted_item:
+            self._test_result = ProblemResponseBuilder(
+                enums.ProblemResponses.RESTRICTED_FUNCTION,
+                description=('Restricted Function: %s' % restricted_item)
+            )
+        else:
+            self._safe_to_run = True
 
     def _analyze_result_code(self):
         """Analyzes the test result code and sets the test result
@@ -402,3 +428,23 @@ class CSharpProblemWorker(ProblemWorker):
                 *args,
                 user_file_path]
         self._execute_command(args)
+
+
+class NotImplementedProblemWorker(ProblemWorker):
+    def _build_run_command(self, user_file_path):
+        pass
+
+    def _compile(self, user_file_path):
+        pass
+
+    def test(self, request):
+        """Runs the users submission against all test cases
+
+        :param request: The http request containing the users submission
+        :return: A ProblemResponseBuilder for the verdict
+        :rtype: ProblemResponseBuilder
+        """
+        return ProblemResponseBuilder(
+            code=enums.ProblemResponses.SUBMISSION_ERROR,
+            description='Problem Worker for language not implemented.'
+        )
