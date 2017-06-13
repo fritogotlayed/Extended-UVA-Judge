@@ -424,11 +424,10 @@ class CSharpProblemWorker(ProblemWorker):
         """
         exe_file_path = ''.join([user_file_path.rsplit('.', 1)[0], '.exe'])
         compiler, args = self._get_compiler()
-        args = [compiler,
-                ''.join(['/out:', exe_file_path]),
-                *args,
-                user_file_path]
-        self._execute_command(args)
+        cmd_args = [compiler, ''.join(['/out:', exe_file_path])]
+        cmd_args.extend(args)
+        cmd_args.append(user_file_path)
+        self._execute_command(cmd_args)
 
 
 class NotImplementedProblemWorker(ProblemWorker):
