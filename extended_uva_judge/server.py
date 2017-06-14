@@ -4,13 +4,14 @@ import glob
 import importlib
 import logging
 import os
+import sys
 import yaml
 import waitress
 
 from datetime import datetime
 from extended_uva_judge import logging_helper
 from extended_uva_judge.objects import ProblemWorkerFactory
-from os.path import dirname, basename, isfile
+from os.path import dirname, basename, isfile, abspath, join
 
 CURRENT_DIR = dirname(__file__)
 
@@ -20,7 +21,7 @@ def register_blueprints(app):
     raw_mods = [basename(f)[:-3] for f in modules if isfile(f)]
 
     for mod in raw_mods:
-        m = importlib.import_module('controllers.' + mod)
+        m = importlib.import_module('extended_uva_judge.controllers.' + mod)
         if hasattr(m, 'mod'):
             app.register_blueprint(m.mod)
 
@@ -77,7 +78,14 @@ def build_args_parse():
     return parser.parse_args()
 
 
-if __name__ == '__main__':
+def main():
+    here_path = abspath(join(CURRENT_DIR, os.pardir))
+    if here_path not in sys.path:
+        sys.path.append(here_path)
     env_var_override_conf = os.environ.get('EXTENDED_UVA_JUDGE_CONFIG', None)
     arg_parser = build_args_parse()
     start_server(arg_parser.config or env_var_override_conf)
+
+
+if __name__ == '__main__':
+    main()

@@ -13,8 +13,11 @@ setup(
     description='Alternate UVa Judge',
     url='https://github.com/fritogotlayed/Extended-UVA-Judge',
     version='0.0.1',
-    packages=find_packages(),
+    packages=find_packages(exclude=['tests']),
     include_package_data=True,
+    package_data={
+        'extended_uva_judge': ['config.yml']
+    },
     package_dir={'extended_uva_judge': 'extended_uva_judge'},
     install_requires=install_reqs,
     entry_points={
