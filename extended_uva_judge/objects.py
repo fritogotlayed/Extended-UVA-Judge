@@ -113,7 +113,8 @@ class ProblemWorkerFactory:
         elif lang == languages.C_SHARP:
             worker = CSharpProblemWorker(*args)
         else:
-            logging.warning('Failure to run problem worker. Language not implemented.')
+            logging.warning('Failure to run problem worker. '
+                            'Language not implemented.')
             worker = NotImplementedProblemWorker(*args)
 
         logging.debug('Mapped {lang} to {worker}.'.format(
