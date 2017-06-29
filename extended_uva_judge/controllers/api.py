@@ -19,7 +19,7 @@ def test(problem_id, lang):
     output.debug = request.args.get('debug', False)
 
     return Response(output.build_response(),
-                    status=200,
+                    status=200 if output.code != 'SE' else 400,
                     mimetype='application/json')
 
 

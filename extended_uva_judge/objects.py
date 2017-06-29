@@ -74,6 +74,10 @@ class ProblemResponseBuilder:
             value = value.decode()
         self._stderr = value
 
+    @property
+    def code(self):
+        return self._code
+
     MESSAGE_MAP = {
         enums.ProblemResponses.ACCEPTED: 'Accepted',
         enums.ProblemResponses.ACCEPTED_PRESENTATION_ERROR:
