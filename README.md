@@ -65,6 +65,8 @@ The Response Object
 ```
 
 ## Resources
+* [Example Problems](https://github.com/fritogotlayed/Extended-UVA-Judge-Problems)
+* [Scaffold Gist](https://gist.github.com/fritogotlayed/e638ed7d4fdd69a1fc6a7fd176d8f84f)
 * [UVa Problems](https://uva.onlinejudge.org/index.php?option=com_onlinejudge&Itemid=8&category=1)
 * [UVa Solution Generator](http://uvatoolkit.com/problemssolve.php)
 * [uDebug](https://www.udebug.com/UVa/100)

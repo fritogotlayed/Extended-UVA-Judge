@@ -11,13 +11,14 @@ import waitress
 from datetime import datetime
 from extended_uva_judge import logging_helper
 from extended_uva_judge.objects import ProblemWorkerFactory
-from os.path import dirname, basename, isfile, abspath, join
+from os.path import basename, isfile, abspath, join
 
-CURRENT_DIR = dirname(__file__)
+CURRENT_DIR = abspath(__file__).replace('server.pyc', 'server.py').replace(
+    'server.py', '')
 
 
 def register_blueprints(app):
-    modules = glob.glob(CURRENT_DIR + '/controllers/*.py')
+    modules = glob.glob(CURRENT_DIR + 'controllers/*.py')
     raw_mods = [basename(f)[:-3] for f in modules if isfile(f)]
 
     for mod in raw_mods:
@@ -30,7 +31,7 @@ def build_app(override_config=None):
     app = flask.Flask('Extended-UVA-Judge',
                       template_folder='templates',
                       static_folder='static')
-    config = yaml.load(open(CURRENT_DIR + '/config.yml'))
+    config = yaml.load(open(CURRENT_DIR + 'config.yml'))
 
     if override_config:
         # TODO: Find a better way to merge these. If data exists in the default

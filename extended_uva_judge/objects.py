@@ -106,11 +106,11 @@ class ProblemWorkerFactory:
         _config = app_config
 
     @staticmethod
-    def create_worker(language, problem_id):
+    def create_worker(language, problem_id, debug):
         global _config
 
         lang = ProblemWorkerFactory._normalize_language(language)
-        args = lang, problem_id, _config
+        args = lang, problem_id, _config, debug
 
         if lang == languages.PYTHON2 or lang == languages.PYTHON3:
             worker = PythonProblemWorker(*args)
@@ -135,7 +135,7 @@ class ProblemWorkerFactory:
 
 
 class ProblemWorker:
-    def __init__(self, language, problem_id, config):
+    def __init__(self, language, problem_id, config, debug_output):
         self._mapped_lang = language
         self._problem_id = problem_id
         self._config = config  # type: dict
@@ -148,6 +148,7 @@ class ProblemWorker:
         self._user_error = None
         self._user_result_code = None
         self._safe_to_run = False
+        self._debug_output = debug_output
 
     def __enter__(self):
         return self
@@ -251,7 +252,8 @@ class ProblemWorker:
         self._test_result = ProblemResponseBuilder(
             self._user_result_code,
             stdout=self._user_output,
-            stderr=self._user_error
+            stderr=self._user_error,
+            debug=self._debug_output
         )
 
     def _execute_run(self):
@@ -304,7 +306,7 @@ class ProblemWorker:
         # Translate the line endings for os compatibility
         line_sep = os.linesep.encode()
         expected_list = self._get_problem_config()['output']
-        self._user_output = self._user_output.replace(line_sep, b'\n')
+        self._user_output = self._user_output.replace(line_sep, b'\n').strip()
 
         self._log.debug('Checking output against %s solutions' %
                         len(expected_list))
@@ -312,7 +314,7 @@ class ProblemWorker:
         accepted = False
         expected = None
         for expected in expected_list:
-            expected = expected.encode().replace(line_sep, b'\n')
+            expected = expected.encode().replace(line_sep, b'\n').strip()
             message = 'output="{output}", expected="{expected}"'.format(
                 output=self._user_output, expected=expected
             )

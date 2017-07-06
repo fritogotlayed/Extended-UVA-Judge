@@ -13,10 +13,9 @@ def test(problem_id, lang):
     output = _validate_submission_request(problem_id, lang)
 
     if output is None:
-        with ProblemWorkerFactory.create_worker(lang, problem_id) as worker:
+        with ProblemWorkerFactory.create_worker(
+                lang, problem_id, request.args.get('debug', False)) as worker:
             output = worker.test(request)
-
-    output.debug = request.args.get('debug', False)
 
     return Response(output.build_response(),
                     status=200 if output.code != 'SE' else 400,
