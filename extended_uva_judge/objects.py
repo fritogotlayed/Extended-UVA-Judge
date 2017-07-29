@@ -1,3 +1,9 @@
+"""Module housing the bulk of the business objects for the Judge system
+
+This module houses the various business objects for the automated Judge. In the
+future if the judge expands enough new modules may be created to subdivide
+logical groupings.
+"""
 import os
 import shutil
 import logging
@@ -12,6 +18,7 @@ from extended_uva_judge import errors, enums, utilities, languages
 
 
 class ProblemResponseBuilder:
+    """Class to assist with building responses to the submission testing"""
     def __init__(self, code, description=None, trace=None, debug=False,
                  stdout=None, stderr=None):
         self._code = code
@@ -308,7 +315,7 @@ class ProblemWorker:
         expected_list = self._get_problem_config()['output']
         self._user_output = self._user_output.replace(line_sep, b'\n').strip()
 
-        self._log.debug('Checking output against %s solutions' %
+        self._log.debug('Checking output against %s solutions',
                         len(expected_list))
 
         accepted = False

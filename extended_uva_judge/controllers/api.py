@@ -1,3 +1,8 @@
+"""Module to house the v1 API methods
+
+This module acts as the main entry point for users to interact with the
+application.
+"""
 from flask import Blueprint, jsonify, current_app, request, Response, redirect
 from flask import url_for
 from extended_uva_judge import errors, enums, utilities, languages, problems
@@ -5,16 +10,23 @@ from extended_uva_judge.objects import ProblemWorkerFactory, \
     ProblemResponseBuilder
 
 
-mod = Blueprint('api', __name__, url_prefix='/api/v1')
+MOD = Blueprint('api', __name__, url_prefix='/api/v1')
 
 
-@mod.route('/problem/<problem_id>/<lang>/test', methods=['POST'])
+@MOD.route('/problem/<problem_id>/<lang>/test', methods=['POST'])
 def test(problem_id, lang):
+    """Entry point for users to submit code for testing
+
+    :param problem_id: Problem identifier that the submission aims to solve
+    :param lang: Language the submission is in.
+    """
     output = _validate_submission_request(problem_id, lang)
 
     if output is None:
-        with ProblemWorkerFactory.create_worker(
-                lang, problem_id, request.args.get('debug', False)) as worker:
+        is_debug = request.args.get('debug', False)
+        with ProblemWorkerFactory.create_worker(lang,
+                                                problem_id,
+                                                is_debug) as worker:
             output = worker.test(request)
 
     return Response(output.build_response(),
@@ -22,25 +34,29 @@ def test(problem_id, lang):
                     mimetype='application/json')
 
 
-@mod.route('/available_problems', methods=['GET'])
+@MOD.route('/available_problems', methods=['GET'])
 def available_problems():
+    """Returns the available problems for this judge"""
     return redirect(url_for('api.problems'))
 
 
-@mod.route('/available_languages', methods=['GET'])
+@MOD.route('/available_languages', methods=['GET'])
 def available_languages():
+    """Returns the available languages for this judge"""
     return redirect(url_for('api.languages'))
 
 
-@mod.route('/problems', methods=['GET'])
+@MOD.route('/problems', methods=['GET'])
 def get_problems():
+    """Returns the available problems for this judge"""
     config = current_app.app_config
 
     return jsonify({'problems': problems.get_available_problems(config)})
 
 
-@mod.route('/languages', methods=['GET'])
+@MOD.route('/languages', methods=['GET'])
 def get_languages():
+    """Returns the available languages for this judge"""
     config = current_app.app_config
     lang_configs = config.get('languages')
     configured_keys = list(lang_configs.keys())
